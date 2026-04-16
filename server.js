@@ -15,7 +15,7 @@ app.use(express.json());
 
 let runningProcess = null;
 let consoleLogs = [];
-let config = { mainFile: 'index.js', modules: '', containerName: 'kuro-node-v18' };
+let config = { mainFile: 'index.js', modules: '' };
 
 if (fs.existsSync('config.json')) {
     config = JSON.parse(fs.readFileSync('config.json'));
@@ -27,7 +27,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// --- API System Stats ---
+// --- System Stats ---
 app.get('/system-stats', (req, res) => {
     const totalMem = (os.totalmem() / 1024 / 1024).toFixed(0);
     const usedMem = ((os.totalmem() - os.freemem()) / 1024 / 1024).toFixed(0);
@@ -35,133 +35,58 @@ app.get('/system-stats', (req, res) => {
         status: runningProcess ? 'RUNNING' : 'OFFLINE',
         cpu: (os.loadavg()[0] * 10).toFixed(1),
         ramUsed: usedMem,
-        ramTotal: totalMem
+        ramTotal: totalMem,
+        disk: '1.2GB / 5GB',
+        uptime: Math.floor(os.uptime() / 3600) + 'h ' + Math.floor((os.uptime() % 3600) / 60) + 'm'
     });
 });
 
-// --- Logic Run (With Docker Pull Simulation) ---
-app.post('/run', async (req, res) => {
-    if (runningProcess) return res.redirect('/console');
-    
-    consoleLogs = [
-        `<span class="text-blue-400">[DOCKER] Pulling image: ${config.containerName}...</span>`,
-        `<span class="text-zinc-500">Status: Image is up to date for ${config.containerName}</span>`,
-        `<span class="text-blue-400">[DOCKER] Creating container...</span>`,
-        `<span class="text-purple-400">[SYSTEM] Mounting volumes and setting environment...</span>`
-    ];
-
-    setTimeout(() => {
-        const botPath = path.join(__dirname, 'bots', config.mainFile);
-        if (fs.existsSync(botPath)) {
-            consoleLogs.push(`<span class="text-green-400">[SUCCESS] Container Started. Output below:</span>`);
-            consoleLogs.push(`-----------------------------------------------`);
-            runningProcess = spawn('node', [botPath]);
-            runningProcess.stdout.on('data', (d) => consoleLogs.push(`${d}`));
-            runningProcess.stderr.on('data', (d) => consoleLogs.push(`<span class="text-red-400">[ERR] ${d}</span>`));
-            runningProcess.on('close', () => { runningProcess = null; });
-        } else {
-            consoleLogs.push(`<span class="text-red-500">[ERR] Main file ${config.mainFile} not found!</span>`);
-        }
-    }, 2000);
-    
-    res.redirect('/console');
-});
-
-app.post('/stop', (req, res) => {
-    if (runningProcess) {
-        runningProcess.kill();
-        runningProcess = null;
-        consoleLogs.push(`<span class="text-orange-400">[DOCKER] Container terminated.</span>`);
-    }
-    res.redirect('/console');
-});
-
-app.post('/save-startup', (req, res) => {
-    config.mainFile = req.body.mainFile;
-    config.modules = req.body.modules;
-    config.containerName = req.body.containerName || 'kuro-node-v18';
-    fs.writeFileSync('config.json', JSON.stringify(config));
-    
-    if (config.modules) {
-        try {
-            const mods = config.modules.replace(/,/g, ' ');
-            execSync(`npm install ${mods}`);
-        } catch (e) { console.error(e); }
-    }
-    res.redirect('/startup');
-});
-
-// --- UI Layout (Deep Amethyst Theme) ---
+// --- Layout UI (Minimal Black & White) ---
 const layout = (content, active) => `
 <!DOCTYPE html>
 <html lang="th">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KURO ULTRA | Dashboard</title>
+    <title>KURO | Minimal Host</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
-        body { background-color: #0a0a0c; color: #e2e8f0; font-family: 'JetBrains Mono', monospace; }
-        .sidebar { transition: transform 0.3s ease; transform: translateX(-100%); z-index: 1000; }
-        .sidebar.active { transform: translateX(0); }
-        .glass { background: rgba(20, 20, 25, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(139, 92, 246, 0.2); }
-        .btn-purple { background: linear-gradient(135deg, #8b5cf6, #6d28d9); transition: 0.3s; }
-        .btn-purple:hover { opacity: 0.9; box-shadow: 0 0 15px rgba(139, 92, 246, 0.4); }
-        .custom-scroll::-webkit-scrollbar { width: 5px; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #2d2d35; border-radius: 10px; }
-        .nav-link.active { border-left: 4px solid #8b5cf6; background: rgba(139, 92, 246, 0.1); color: #a78bfa; }
+        @import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@100..900&display=swap');
+        body { background-color: #000; color: #fff; font-family: 'Geist Mono', monospace; }
+        .glass { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); }
+        .nav-link.active { background: #fff; color: #000; font-weight: bold; }
+        .custom-scroll::-webkit-scrollbar { height: 4px; width: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
     </style>
 </head>
 <body class="flex flex-col h-screen overflow-hidden">
-
-    <div id="loader" class="fixed inset-0 bg-black/90 z-[2000] hidden flex-col items-center justify-center gap-4">
-        <div class="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
-        <p class="text-purple-400 text-xs font-bold animate-pulse">DEPLOYING CHANGES...</p>
-    </div>
-
-    <header class="p-4 glass flex justify-between items-center px-6 border-b border-purple-900/20">
-        <div class="flex items-center gap-4">
-            <button onclick="document.getElementById('side').classList.toggle('active')" class="text-purple-400"><i class="fas fa-bars-staggered"></i></button>
-            <h1 class="font-black text-xl tracking-tighter">KURO<span class="text-purple-500 italic">ULTRA</span></h1>
+    <header class="p-5 border-b border-white/10 flex justify-between items-center px-10">
+        <div class="flex items-center gap-8">
+            <h1 class="text-lg font-black tracking-tighter uppercase">Kuro<span class="font-thin">Shiro</span></h1>
+            <nav class="flex gap-2">
+                <a href="/console" class="text-[10px] px-4 py-2 rounded-full transition ${active==='console'?'nav-link active':'hover:bg-white/5'}">CONSOLE</a>
+                <a href="/files" class="text-[10px] px-4 py-2 rounded-full transition ${active==='files'?'nav-link active':'hover:bg-white/5'}">FILES</a>
+                <a href="/startup" class="text-[10px] px-4 py-2 rounded-full transition ${active==='startup'?'nav-link active':'hover:bg-white/5'}">STARTUP</a>
+            </nav>
         </div>
-        <div class="flex items-center gap-6">
-            <div class="text-right hidden sm:block">
-                <p class="text-[8px] text-zinc-500 font-bold uppercase">CPU Usage</p>
-                <p id="cpu-stat" class="text-xs font-bold text-purple-400">0.0%</p>
-            </div>
-            <div id="status-dot" class="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_10px_red]"></div>
-        </div>
+        <div id="status-tag" class="text-[9px] px-3 py-1 rounded-full border border-white/20">IDLE</div>
     </header>
 
-    <div id="side" class="sidebar fixed top-0 bottom-0 left-0 w-72 glass flex flex-col p-6 shadow-2xl">
-        <div class="flex justify-between items-center mb-10">
-            <span class="text-xs font-bold text-zinc-600 tracking-widest">NAVIGATION</span>
-            <button onclick="document.getElementById('side').classList.remove('active')" class="text-zinc-500"><i class="fas fa-xmark"></i></button>
-        </div>
-        <nav class="space-y-2">
-            <a href="/console" class="nav-link block p-4 rounded-xl transition ${active==='console'?'active':''}"><i class="fas fa-terminal mr-3"></i> Console</a>
-            <a href="/files" class="nav-link block p-4 rounded-xl transition ${active==='files'?'active':''}"><i class="fas fa-folder-tree mr-3"></i> File Manager</a>
-            <a href="/startup" class="nav-link block p-4 rounded-xl transition ${active==='startup'?'active':''}"><i class="fas fa-rocket mr-3"></i> Startup Config</a>
-        </nav>
-        <div class="mt-auto p-4 bg-purple-900/10 rounded-2xl border border-purple-900/20">
-            <p class="text-[10px] text-purple-400 font-bold mb-1">DOCKER ENGINE</p>
-            <p class="text-[9px] text-zinc-500 uppercase">Running: v24.0.7</p>
-        </div>
-    </div>
-
-    <main class="flex-1 overflow-y-auto p-4 md:p-8">${content}</main>
+    <main class="flex-1 overflow-y-auto p-6 md:p-10 custom-scroll">${content}</main>
 
     <script>
         setInterval(() => {
             fetch('/system-stats').then(r => r.json()).then(d => {
-                document.getElementById('cpu-stat').innerText = d.cpu + '%';
-                const dot = document.getElementById('status-dot');
-                if(d.status === 'RUNNING') {
-                    dot.className = 'w-3 h-3 rounded-full bg-green-500 shadow-[0_0_10px_#22c55e]';
-                } else {
-                    dot.className = 'w-3 h-3 rounded-full bg-red-500 shadow-[0_0_10px_red]';
+                const tag = document.getElementById('status-tag');
+                tag.innerText = d.status;
+                tag.style.borderColor = d.status === 'RUNNING' ? '#fff' : 'rgba(255,255,255,0.2)';
+                
+                if(document.getElementById('cpu-val')) {
+                    document.getElementById('cpu-val').innerText = d.cpu + '%';
+                    document.getElementById('ram-val').innerText = d.ramUsed + 'MB / ' + d.ramTotal + 'MB';
+                    document.getElementById('disk-val').innerText = d.disk;
+                    document.getElementById('uptime-val').innerText = d.uptime;
                 }
             });
         }, 2000);
@@ -170,29 +95,48 @@ const layout = (content, active) => `
 </html>
 `;
 
-// --- Pages ---
+// --- Routes ---
 app.get('/', (req, res) => res.redirect('/console'));
 
 app.get('/console', (req, res) => {
     const html = `
-    <div class="max-w-5xl mx-auto space-y-6">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <form action="/run" method="POST"><button class="w-full btn-purple text-white py-4 rounded-2xl font-bold text-sm shadow-xl">START ENGINE</button></form>
-            <form action="/stop" method="POST"><button class="w-full bg-zinc-900 border border-zinc-800 text-zinc-400 py-4 rounded-2xl font-bold text-sm">STOP CONTAINER</button></form>
-        </div>
-        <div class="glass rounded-[32px] p-6 h-[60vh] flex flex-col relative overflow-hidden">
-            <div class="flex justify-between items-center mb-4 border-b border-zinc-800 pb-4">
-                <span class="text-[10px] font-bold text-purple-500 uppercase tracking-widest">Container Console Log</span>
-                <i class="fas fa-circle text-[8px] text-purple-900"></i>
+    <div class="max-w-6xl mx-auto space-y-6">
+        <div class="glass rounded-2xl overflow-hidden flex flex-col h-64">
+            <div class="p-3 border-b border-white/5 flex justify-between px-6 bg-white/5">
+                <span class="text-[9px] font-bold opacity-50 uppercase tracking-widest">System Output Terminal</span>
+                <div class="flex gap-2">
+                    <form action="/run" method="POST"><button class="text-[9px] font-bold hover:text-green-400">RUN</button></form>
+                    <span class="opacity-20">|</span>
+                    <form action="/stop" method="POST"><button class="text-[9px] font-bold hover:text-red-400">STOP</button></form>
+                </div>
             </div>
-            <div id="logs" class="flex-1 overflow-y-auto custom-scroll text-[11px] font-medium leading-relaxed text-zinc-400 space-y-1"></div>
+            <div id="logs" class="flex-1 p-6 overflow-y-auto custom-scroll text-[11px] leading-relaxed text-zinc-400 font-mono"></div>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="glass p-6 rounded-2xl">
+                <p class="text-[8px] opacity-40 mb-2">CPU LOAD</p>
+                <p id="cpu-val" class="text-xl font-light font-mono">0.0%</p>
+            </div>
+            <div class="glass p-6 rounded-2xl">
+                <p class="text-[8px] opacity-40 mb-2">MEMORY USAGE</p>
+                <p id="ram-val" class="text-xl font-light font-mono text-xs">0MB / 0MB</p>
+            </div>
+            <div class="glass p-6 rounded-2xl">
+                <p class="text-[8px] opacity-40 mb-2">DISK SPACE</p>
+                <p id="disk-val" class="text-xl font-light font-mono">0.0GB</p>
+            </div>
+            <div id="uptime-box" class="glass p-6 rounded-2xl">
+                <p class="text-[8px] opacity-40 mb-2">UPTIME</p>
+                <p id="uptime-val" class="text-xl font-light font-mono">0h 0m</p>
+            </div>
         </div>
     </div>
     <script>
         setInterval(() => {
             fetch('/get-logs').then(r => r.text()).then(t => {
                 const l = document.getElementById('logs');
-                l.innerHTML = t;
+                l.innerHTML = t.split('\\n').join('<br>');
                 l.scrollTop = l.scrollHeight;
             });
         }, 1500);
@@ -203,24 +147,34 @@ app.get('/console', (req, res) => {
 app.get('/files', (req, res) => {
     const files = fs.readdirSync('./bots');
     const html = `
-    <div class="max-w-5xl mx-auto glass rounded-[32px] overflow-hidden">
-        <div class="p-6 border-b border-zinc-800 flex justify-between items-center bg-white/5">
-            <h2 class="font-bold text-sm">/home/container</h2>
-            <form action="/upload" method="POST" enctype="multipart/form-data" class="flex gap-2">
-                <input type="file" name="botFile" class="text-xs text-zinc-500">
-                <button class="bg-purple-600 px-4 py-1 rounded-lg text-xs font-bold">Upload</button>
-            </form>
+    <div class="max-w-4xl mx-auto space-y-6">
+        <div class="flex justify-between items-center px-4">
+            <h2 class="text-xs font-bold tracking-widest opacity-50">FILE MANAGER</h2>
+            <div class="flex gap-4">
+                <form action="/create-file" method="POST" class="flex gap-2">
+                    <input type="text" name="name" placeholder="new_file.js" class="bg-transparent border-b border-white/20 text-[10px] outline-none px-2">
+                    <button class="text-[10px] hover:underline">+</button>
+                </form>
+            </div>
         </div>
-        <div class="divide-y divide-zinc-800/50">
+        
+        <div class="glass rounded-2xl overflow-hidden divide-y divide-white/5">
+            <div class="p-4 bg-white/[0.02] flex justify-between items-center px-8">
+                <span class="text-[10px] opacity-40 italic">File list</span>
+                <form action="/upload" method="POST" enctype="multipart/form-data" class="flex gap-4 items-center">
+                    <input type="file" name="botFile" class="text-[9px] opacity-50">
+                    <button class="bg-white text-black text-[9px] px-4 py-1 rounded-full font-bold">UPLOAD</button>
+                </form>
+            </div>
             ${files.map(f => `
-                <div class="p-4 flex justify-between items-center hover:bg-white/5 transition px-8">
-                    <div class="flex items-center gap-3">
-                        <i class="far fa-file-code text-purple-500"></i>
-                        <span class="text-sm font-medium text-zinc-300">${f}</span>
+                <div class="p-5 flex justify-between items-center hover:bg-white/[0.02] transition px-8 group">
+                    <div class="flex items-center gap-4">
+                        <i class="far fa-file text-zinc-600 group-hover:text-white transition"></i>
+                        <span class="text-xs font-medium">${f}</span>
                     </div>
-                    <div class="flex gap-6">
-                        <a href="/edit-page/${f}" class="text-zinc-500 hover:text-blue-400 transition"><i class="fas fa-pencil-alt text-xs"></i></a>
-                        <a href="/delete/${f}" class="text-zinc-500 hover:text-red-500 transition"><i class="fas fa-trash-alt text-xs"></i></a>
+                    <div class="flex gap-6 opacity-0 group-hover:opacity-100 transition">
+                        <a href="/edit-page/${f}" class="text-zinc-500 hover:text-white"><i class="fas fa-pencil-alt text-xs"></i></a>
+                        <a href="/delete/${f}" class="text-zinc-500 hover:text-red-500"><i class="fas fa-trash-alt text-xs"></i></a>
                     </div>
                 </div>
             `).join('')}
@@ -232,27 +186,21 @@ app.get('/files', (req, res) => {
 app.get('/edit-page/:name', (req, res) => {
     const code = fs.readFileSync(path.join(__dirname, 'bots', req.params.name), 'utf8');
     const html = `
-    <div class="max-w-6xl mx-auto flex flex-col h-[80vh] glass rounded-[32px] overflow-hidden">
-        <div class="p-6 border-b border-zinc-800 flex justify-between items-center">
-            <div class="flex items-center gap-3">
-                <i class="fas fa-code text-purple-500"></i>
-                <span class="font-bold text-sm text-zinc-400">${req.params.name}</span>
-            </div>
-            <button onclick="saveFile()" class="btn-purple px-8 py-2 rounded-full text-xs font-bold text-white shadow-lg">SAVE FILE</button>
+    <div class="max-w-6xl mx-auto flex flex-col h-[75vh] glass rounded-2xl overflow-hidden">
+        <div class="p-6 border-b border-white/5 flex justify-between items-center bg-white/5">
+            <span class="text-xs font-bold">${req.params.name}</span>
+            <button onclick="save()" class="bg-white text-black px-8 py-2 rounded-full text-[10px] font-bold">SAVE CHANGES</button>
         </div>
-        <textarea id="editor" class="flex-1 p-8 text-sm font-mono outline-none resize-none bg-black/40 text-purple-100/80 leading-relaxed custom-scroll" spellcheck="false">${code}</textarea>
+        <textarea id="editor" class="flex-1 p-10 bg-transparent text-zinc-400 font-mono text-sm outline-none resize-none custom-scroll" spellcheck="false">${code}</textarea>
     </div>
     <script>
-        function saveFile() {
-            document.getElementById('loader').classList.remove('hidden');
+        function save() {
             const content = document.getElementById('editor').value;
             fetch('/save-file', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ name: '${req.params.name}', content: content })
-            }).then(() => {
-                setTimeout(() => window.location.href = '/files', 800);
-            });
+            }).then(() => window.location.href = '/files');
         }
     </script>`;
     res.send(layout(html, 'files'));
@@ -260,37 +208,78 @@ app.get('/edit-page/:name', (req, res) => {
 
 app.get('/startup', (req, res) => {
     const html = `
-    <div class="max-w-2xl mx-auto glass rounded-[40px] p-10 mt-6 shadow-2xl">
-        <h2 class="text-lg font-bold mb-8 text-purple-400"><i class="fas fa-rocket mr-3"></i>Container Settings</h2>
-        <form action="/save-startup" method="POST" class="space-y-8" onsubmit="document.getElementById('loader').classList.remove('hidden')">
+    <div class="max-w-xl mx-auto glass rounded-3xl p-10 mt-6">
+        <h2 class="text-xs font-bold mb-10 tracking-widest opacity-40">STARTUP CONFIGURATION</h2>
+        <form action="/save-startup" method="POST" class="space-y-8">
             <div class="space-y-2">
-                <label class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Main Execution File</label>
-                <input type="text" name="mainFile" value="${config.mainFile}" class="w-full bg-black/40 border border-zinc-800 p-4 rounded-2xl outline-none focus:border-purple-500 transition shadow-inner text-sm" placeholder="index.js">
+                <label class="text-[9px] opacity-40 ml-1">MAIN EXECUTION FILE</label>
+                <input type="text" name="mainFile" value="${config.mainFile}" class="w-full bg-white/5 border border-white/10 p-4 rounded-xl outline-none focus:border-white/40 transition text-xs">
             </div>
             <div class="space-y-2">
-                <label class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Node Modules (Comma Separated)</label>
-                <input type="text" name="modules" value="${config.modules}" class="w-full bg-black/40 border border-zinc-800 p-4 rounded-2xl outline-none focus:border-purple-500 text-sm" placeholder="discord.js, axios, dotenv">
+                <label class="text-[9px] opacity-40 ml-1">DEPENDENCIES (COMMA SEPARATED)</label>
+                <input type="text" name="modules" value="${config.modules}" class="w-full bg-white/5 border border-white/10 p-4 rounded-xl outline-none focus:border-white/40 text-xs" placeholder="discord.js, axios">
             </div>
-            <div class="space-y-2">
-                <label class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Docker Image Name</label>
-                <input type="text" name="containerName" value="${config.containerName}" class="w-full bg-black/40 border border-zinc-800 p-4 rounded-2xl outline-none focus:border-purple-500 text-sm">
-            </div>
-            <button class="w-full btn-purple py-5 rounded-3xl font-bold text-sm shadow-2xl shadow-purple-900/20 transition-transform active:scale-95">SAVE & RE-DEPLOY</button>
+            <button class="w-full bg-white text-black py-4 rounded-xl font-bold text-xs shadow-xl shadow-white/5">SAVE & INSTALL</button>
         </form>
     </div>`;
     res.send(layout(html, 'startup'));
 });
 
-// Helper Functions
+// --- Actions ---
+app.post('/run', (req, res) => {
+    if (runningProcess) return res.redirect('/console');
+    const botPath = path.join(__dirname, 'bots', config.mainFile);
+    if (fs.existsSync(botPath)) {
+        consoleLogs = [`[SYSTEM] Booting: ${config.mainFile}`];
+        runningProcess = spawn('node', [botPath]);
+        runningProcess.stdout.on('data', (d) => consoleLogs.push(`${d}`));
+        runningProcess.stderr.on('data', (d) => consoleLogs.push(`[ERROR] ${d}`));
+        runningProcess.on('close', () => { runningProcess = null; });
+    }
+    res.redirect('/console');
+});
+
+app.post('/stop', (req, res) => {
+    if (runningProcess) { runningProcess.kill(); runningProcess = null; consoleLogs.push(`[SYSTEM] Container stopped.`); }
+    res.redirect('/console');
+});
+
+app.post('/save-startup', (req, res) => {
+    config.mainFile = req.body.mainFile; config.modules = req.body.modules;
+    fs.writeFileSync('config.json', JSON.stringify(config));
+    if (config.modules) {
+        try { execSync(`npm install ${config.modules.replace(/,/g, ' ')}`); } catch (e) {}
+    }
+    res.redirect('/startup');
+});
+
+app.post('/create-file', (req, res) => {
+    if(req.body.name) fs.writeFileSync(path.join(__dirname, 'bots', req.body.name), '// New File');
+    res.redirect('/files');
+});
+
 app.post('/save-file', (req, res) => {
     fs.writeFileSync(path.join(__dirname, 'bots', req.body.name), req.body.content);
     res.json({ success: true });
 });
+
 app.post('/upload', upload.single('botFile'), (req, res) => res.redirect('/files'));
 app.get('/delete/:name', (req, res) => {
     fs.unlinkSync(path.join(__dirname, 'bots', req.params.name));
     res.redirect('/files');
 });
-app.get('/get-logs', (req, res) => res.send(consoleLogs.join('<br>')));
+app.get('/get-logs', (req, res) => res.send(consoleLogs.join('\n')));
 
-app.listen(port, () => console.log('KURO ULTRA v5 DEPLOYED'));
+app.listen(port, () => {
+    console.log(`
+=============================================================================
+  _  __  _    _  _____    ____        _____  _    _  _____  _____    ____
+ | |/ / | |  | ||  __ \  / __ \      / ____|| |  | ||_   _||  __ \  / __ \
+ | ' /  | |  | || |__) || |  | |    | (___  | |__| |  | |  | |__) || |  | |
+ |  <   | |  | ||  _  / | |  | |     \\___ \\ |  __  |  | |  |  _  / | |  | |
+ | . \\  | |__| || | \\ \\ | |__| |     ____) || |  | || _ |_ | | \\ \\ | |__| |
+ |_|\\_\\  \\____/ |_|  \\_\\ \\____/     |_____/ |_|  |_||_____||_|  \\_\\ \\____/
+=============================================================================
+KURO SHIRO MINIMAL V6 READY AT PORT ${port}
+    `);
+});
