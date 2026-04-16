@@ -1,7 +1,7 @@
 {
-  "name": "kuro-host-ultimate-pro",
-  "version": "7.0.0",
-  "description": "Professional Hosting System with Auth",
+  "name": "kuro-host-v8",
+  "version": "8.0.0",
+  "description": "Professional Hosting with Real-time Module Injection",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
